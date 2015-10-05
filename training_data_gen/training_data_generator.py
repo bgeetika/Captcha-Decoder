@@ -2,7 +2,6 @@ import numpy
 import os
 import re
 import sys
-from PIL import Image
 
 from training_data_gen.image_preprocessor import ImagePreprocessor
 import training_data_gen.vocabulary as vocabulary
@@ -24,7 +23,7 @@ def _GetCaptchaIdsFromImageFilename(image_filepath):
 
 def _GetShapeOfImagesUnderDir(captchas_dir):
   for captcha_filepath in utils.GetFilePathsUnderDir(captchas_dir):
-    image_data = numpy.asarray(Image.open(captcha_filepath)) 
+    image_data = ImagePreprocessor.GetImageData(captcha_filepath)
     return image_data.shape
   return None
 
@@ -42,7 +41,7 @@ class TrainingData(object):
   def GenerateTrainingData(cls,
 			   captchas_dir,
 			   training_data_dir,
-			   max_size=6000,
+			   max_size=20000,
 			   max_captcha_length=8):
     image_shape = _GetShapeOfImagesUnderDir(captchas_dir)
     training_data_shape = tuple(
@@ -53,7 +52,7 @@ class TrainingData(object):
     i = 0
     for captcha_filepath in utils.GetFilePathsUnderDir(captchas_dir):
       try:
-        image_data = numpy.asarray(Image.open(captcha_filepath))
+        image_data = ImagePreprocessor.GetImageData(captcha_filepath)
       except Exception as e:
         print e, captcha_filepath
         continue

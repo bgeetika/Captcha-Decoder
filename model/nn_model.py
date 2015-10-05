@@ -30,7 +30,7 @@ class Model(object):
 
   @classmethod
   def _Initialize(cls):
-    image_input = T.ftensor4('image_input')
+    image_input = T.tensor4('image_input')
     prediction_layer = cls._BuildModel(image_input)
 
     target_chars = T.imatrix('target_chars')
@@ -79,7 +79,7 @@ class Model(object):
     if cnn_max_pool_configs is None:
       cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
     input_shape = T.shape(image_input)
-    network = lasagne.layers.InputLayer(shape=(None, 3, 50, 200),
+    network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
                                         input_var=image_input)
     network = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
 
@@ -117,7 +117,6 @@ class Model(object):
   @classmethod
   def _DefaultCNNMaxPoolConfigs(cls):
     return [
-      cls.CNNMaxPoolConfig(16, (5,5), (2,2)),
-      cls.CNNMaxPoolConfig(8, (5,5), (2,2)),
-      cls.CNNMaxPoolConfig(4, (5,5), (2,2)),
+      cls.CNNMaxPoolConfig(32, (5,5), (2,2)),
+      cls.CNNMaxPoolConfig(32, (5,5), (2,2)),
     ]
