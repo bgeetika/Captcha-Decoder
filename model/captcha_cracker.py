@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import glob
 import numpy
 import os
@@ -68,11 +70,11 @@ def _SaveModelWithPrefix(captcha_model, prefix):
   dir_path, file_prefix = os.path.dirname(prefix), os.path.basename(prefix)
   temp_params_file_prefix = os.path.join(dir_path, 'tmp.')
   temp_params_file = GetParamsFileName(temp_params_file_prefix)
-  print 'Saving at temp location {0}'.format(temp_params_file)
+  print('Saving at temp location {0}'.format(temp_params_file))
   captcha_model.SaveModelParamsToFile(temp_params_file)
 
   perm_params_file = GetParamsFileName(prefix)
-  print 'Saving at perm location {0}'.format(perm_params_file)
+  print('Saving at perm location {0}'.format(perm_params_file))
   os.rename(temp_params_file, perm_params_file)
 
 def _KeepOnlyNModels(prefix, n=5):
@@ -116,7 +118,7 @@ def Run(training_data_dir, val_data_file, test_data_file,
       Test(captcha_model.GetTestFn(), val_image_input,
            val_target_chars)
       if i != 0 and i % 10 == 0:
-        print 'Processed epoch:{0} {1} training files.'.format(epoch_num, i)
+        print('Processed epoch:{0} {1} training files.'.format(epoch_num, i))
 
   test_image_input, test_target_chars = TrainingData.Load(test_data_file)
   Test(captcha_model.GetTestFn(), test_image_input, test_target_chars)
@@ -134,12 +136,13 @@ class CaptchaCracker(object):
 
   def InferForImageArray(self, image_numpy_arr):
     image_numpy_arr = ImagePreprocessor.NormalizeImageInput(image_numpy_arr)
-    predicted_char_id, predicted_probs = self._inference_fn(image_numpy_arr)
-    char_vocabulary = vocabulary.CHAR_VOCABULARY
-    predicted_char = char_vocabulary[predicted_char_id[0]]
+    predicted_char_id, predicted_probs = self._inference_fn(
+        numpy.expand_dims(image_numpy_arr, axis=0))
+    chars = vocabulary.CHARS
+    predicted_char = chars[predicted_char_id[0]]
     probs_by_chars = {}
     for i in range(predicted_probs.shape[1]):
-      probs_by_chars[char_vocabulary[i]] = predicted_probs[0, i]
+      probs_by_chars[chars[i]] = predicted_probs[0, i]
     return predicted_char, probs_by_chars
 
 

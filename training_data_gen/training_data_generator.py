@@ -35,8 +35,11 @@ class TrainingData(object):
   @classmethod
   def Load(cls, file_path):
     training_data = numpy.load(file_path)
-    return (ImagePreprocessor.NormalizeImageInput(training_data['image_data']),
-            training_data['chars'])
+    ret = (ImagePreprocessor.NormalizeImageInput(training_data['image_data']),  
+           training_data['chars'])
+    del training_data.f
+    training_data.close()
+    return ret
 
   @classmethod
   def GenerateTrainingData(cls,

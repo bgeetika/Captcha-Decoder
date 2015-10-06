@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import lasagne
 import numpy
 import theano
@@ -11,6 +13,8 @@ class Model(object):
     if saved_params_path:
       f = numpy.load(saved_params_path)
       param_values = [f['arr_%d' % i] for i in range(len(f.files))]
+      del f.f
+      f.close()
       lasagne.layers.set_all_param_values(self._network, param_values)
 
   def SaveModelParamsToFile(self, file_path):
