@@ -7,11 +7,11 @@ import training_data_gen.vocabulary as vocabulary
 
 class Model(object):
   def __init__(self, saved_params_path=None):
-    self._network, self._train_fn, self._test_fn =  self._Initialize()
+    self._network, self._train_fn, self._test_fn, self._inference_fn = self._Initialize()
     if saved_params_path:
-      with numpy.load(saved_params_path) as f:
-        param_values = [f['arr_%d' % i] for i in range(len(f.files))]
-        lasagne.layers.set_all_param_values(self._network, param_values)
+      f = numpy.load(saved_params_path)
+      param_values = [f['arr_%d' % i] for i in range(len(f.files))]
+      lasagne.layers.set_all_param_values(self._network, param_values)
 
   def SaveModelParamsToFile(self, file_path):
     numpy.savez(file_path, *lasagne.layers.get_all_param_values(self._network))
@@ -21,6 +21,9 @@ class Model(object):
 
   def GetTestFn(self):
     return self._test_fn
+
+  def GetInferenceFn(self):
+    return self._inference_fn
 
   class CNNMaxPoolConfig(object):
     def __init__(self, num_cnn_filters, cnn_filter_size, max_pool_size):
@@ -55,8 +58,10 @@ class Model(object):
     test_loss = lasagne.objectives.categorical_crossentropy(test_prediction,
 							    target_char)
     test_loss = test_loss.mean()
+
+    predicted_char = T.argmax(test_prediction, axis=1)
     # An expression for the classification accuracy:
-    test_acc = T.mean(T.eq(T.argmax(test_prediction, axis=1), target_char),
+    test_acc = T.mean(T.eq(predicted_char, target_char),
 		      dtype=theano.config.floatX)
 
     # Compile a function performing a training step on a mini-batch (by giving
@@ -66,9 +71,15 @@ class Model(object):
 
     # Compile a second function computing the prediction, validation loss and accuracy:
     test_fn = theano.function([image_input, target_chars],
-			      [test_prediction, test_loss, test_acc],
+			      [test_loss, test_acc],
                               allow_input_downcast=True)
-    return prediction_layer, train_fn, test_fn
+
+    # Compile a third function computing the prediction.
+    inference_fn = theano.function([image_input],
+			           [predicted_char, test_prediction],
+                                   allow_input_downcast=True)
+
+    return prediction_layer, train_fn, test_fn, inference_fn
 
 
   @classmethod
@@ -78,7 +89,6 @@ class Model(object):
                   cnn_dense_layer_sizes=[256]):
     if cnn_max_pool_configs is None:
       cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
-    input_shape = T.shape(image_input)
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
                                         input_var=image_input)
     network = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)

@@ -18,7 +18,7 @@ def _GetCaptchaIdsFromImageFilename(image_filepath):
   captcha_str = _ParseCaptchaFromImageFilename(image_filepath)
   captcha_ids = numpy.zeros(len(captcha_str), dtype=numpy.int32)
   for i, captcha_char in enumerate(captcha_str):
-      captcha_ids[i] = vocabulary.CHAR_VOCABULARY[captcha_char]
+    captcha_ids[i] = vocabulary.CHAR_VOCABULARY[captcha_char]
   return captcha_ids
 
 def _GetShapeOfImagesUnderDir(captchas_dir):
@@ -35,7 +35,8 @@ class TrainingData(object):
   @classmethod
   def Load(cls, file_path):
     training_data = numpy.load(file_path)
-    return training_data['image_data']/100.0, training_data['chars']
+    return (ImagePreprocessor.NormalizeImageInput(training_data['image_data']),
+            training_data['chars'])
 
   @classmethod
   def GenerateTrainingData(cls,
@@ -47,7 +48,8 @@ class TrainingData(object):
     training_data_shape = tuple(
 	[max_size] + list(ImagePreprocessor.GetProcessedImageShape(image_shape)))
     training_image_data = numpy.zeros(training_data_shape, dtype=numpy.float32)
-    training_labels = numpy.zeros((max_size, max_captcha_length), dtype=numpy.int32)
+    training_labels = numpy.zeros((max_size, max_captcha_length),
+                                  dtype=numpy.int32)
 
     i = 0
     for captcha_filepath in utils.GetFilePathsUnderDir(captchas_dir):
@@ -61,15 +63,16 @@ class TrainingData(object):
       index = i % max_size
       training_image_data[index] = ImagePreprocessor.ProcessImage(image_data)
       captcha_ids = _GetCaptchaIdsFromImageFilename(captcha_filepath)
-      training_labels[index, :] = numpy.zeros(max_captcha_length, dtype=numpy.int32)
+      training_labels[index, :] = numpy.zeros(max_captcha_length,
+                                              dtype=numpy.int32)
       training_labels[index, :captcha_ids.shape[0]] = captcha_ids
    
       if i != 0 and (i % 10000) == 0:
-         print 'Generated {0} examples.'.format(i)
+        print 'Generated {0} examples.'.format(i)
 
       if i != 0 and i % max_size == 0:
-	file_path = os.path.join(
-	    training_data_dir, "training_images_{0}.npy".format(i / max_size))
+        file_path = os.path.join(
+            training_data_dir, "training_images_{0}.npy".format(i / max_size))
         try:
           cls.Save(file_path, training_image_data, training_labels)
         except Exception as e:

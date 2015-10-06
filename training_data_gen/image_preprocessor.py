@@ -19,3 +19,7 @@ class ImagePreprocessor(object):
   @classmethod
   def GetImageData(cls, image_file_path):
     return numpy.asarray(Image.open(image_file_path).convert('L')) 
+
+  @classmethod
+  def NormalizeImageInput(cls, image_input):
+    return image_input / 100.0
