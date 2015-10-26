@@ -8,16 +8,45 @@ import theano.tensor as T
 import training_data_gen.vocabulary as vocabulary
 
 class Model(object):
-  def __init__(self, saved_params_path=None):
-    self._network, self._train_fn, self._test_fn, self._inference_fn = self._Initialize()
+  '''
+  class for creating a model.
+  '''
+  def __init__(self, learning_rate, no_hidden_layers, saved_params_path=None, multi_chars=True, num_softmaxes=None):
+    if not no_hidden_layers:
+       self.no_hidden_layers = 2
+    else:
+       self.no_hidden_layers = int(no_hidden_layers)
+    if not learning_rate:
+       self.learning_rate = 0.01
+    else:
+       self.learning_rate = int(learning_rate)
+    if multi_chars:
+      if num_softmaxes:
+	self._network, self._train_fn, self._test_fn, self._inference_fn = (
+	    self._InitializeModelThatPredictsCharsMultiSoftmax(self.learning_rate, num_softmaxes=num_softmaxes))
+      else:
+	self._network, self._train_fn, self._test_fn, self._inference_fn = (
+	    self._InitializeModelThatPredictsAllChars(self.learning_rate))
+    else:
+      self._network, self._train_fn, self._test_fn, self._inference_fn = (
+	  self._InitializeModelThatPredictsFirstChar(self.learning_rate))
     if saved_params_path:
+      ''' 
+      If saved params path is specified, then start from that parms value.
+      '''
       f = numpy.load(saved_params_path)
       param_values = [f['arr_%d' % i] for i in range(len(f.files))]
+      '''
+      Deleting a vector as it is not needed. It was taking memory. so needed to delete it explicitly.
+      '''
       del f.f
       f.close()
       lasagne.layers.set_all_param_values(self._network, param_values)
 
   def SaveModelParamsToFile(self, file_path):
+    '''
+    It saved the current parms to a file for future use.
+    '''
     numpy.savez(file_path, *lasagne.layers.get_all_param_values(self._network))
 
   def GetTrainFn(self):
@@ -36,9 +65,9 @@ class Model(object):
       self.max_pool_size = max_pool_size
 
   @classmethod
-  def _Initialize(cls):
+  def _InitializeModelThatPredictsFirstChar(cls,learning_rate):
     image_input = T.tensor4('image_input')
-    prediction_layer = cls._BuildModel(image_input)
+    prediction_layer = cls._BuildModelToPredictFirstChar(image_input)
 
     target_chars = T.imatrix('target_chars')
     target_char = target_chars[:, 0]
@@ -53,7 +82,7 @@ class Model(object):
     # Descent (SGD) with Nesterov momentum.
     params = lasagne.layers.get_all_params(prediction_layer, trainable=True)
     updates = lasagne.updates.nesterov_momentum(
-	loss, params, learning_rate=0.01, momentum=0.9)
+     	loss, params, learning_rate, momentum=0.9)
 
     # Create a loss expression for validation/testing. The crucial difference
     # here is that we do a deterministic forward pass through the network,
@@ -87,10 +116,11 @@ class Model(object):
 
 
   @classmethod
-  def _BuildModel(cls,
-                  image_input,
-                  cnn_max_pool_configs=None,
-                  cnn_dense_layer_sizes=[256]):
+  def _BuildModelToPredictFirstChar(
+      cls,
+      image_input,
+      cnn_max_pool_configs=None,
+      cnn_dense_layer_sizes=[256]):
     if cnn_max_pool_configs is None:
       cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
@@ -103,6 +133,247 @@ class Model(object):
             num_units=len(vocabulary.CHARS),
             nonlinearity=lasagne.nonlinearities.softmax)
     return network
+
+  @classmethod
+  def _InitializeModelThatPredictsCharsMultiSoftmax(cls,learning_rate, num_softmaxes=5):
+    image_input = T.tensor4('image_input')
+
+    #prediction_layer = cls._BuildModelToPredictFirstChar(image_input)
+    prediction_layer = cls._BuildModelToPredictCharsMultiSoftmax(
+        image_input, num_softmaxes=num_softmaxes)
+
+    target_chars_input = T.imatrix('target_chars_input')
+    target_chars = target_chars_input[:, :num_softmaxes].reshape(shape=(-1,))
+
+    # Create a loss expression for training, Using cross-entropy loss.
+    prediction = lasagne.layers.get_output(prediction_layer)
+    l_loss = lasagne.objectives.categorical_crossentropy(prediction, target_chars)
+    loss = l_loss.mean()
+
+    # Create update expressions for training, i.e., how to modify the
+    # parameters at each training step. Here, we'll use Stochastic Gradient
+    # Descent (SGD) with Nesterov momentum.
+    params = lasagne.layers.get_all_params(prediction_layer, trainable=True)
+    updates = lasagne.updates.nesterov_momentum(
+    	loss, params, learning_rate, momentum=0.9)
+    #updates = lasagne.updates.adagrad(loss, params, learning_rate=0.0001)
+
+    # Create a loss expression for validation/testing. The crucial difference
+    # here is that we do a deterministic forward pass through the network,
+    # disabling dropout layers.
+    test_prediction = lasagne.layers.get_output(prediction_layer, deterministic=True)
+    test_loss = lasagne.objectives.categorical_crossentropy(test_prediction,
+							    target_chars)
+    test_loss = test_loss.mean()
+
+    predicted_chars = T.argmax(test_prediction, axis=1)
+    correctly_predicted_chars = T.eq(predicted_chars, target_chars)
+    # An expression for the classification accuracy:
+    test_acc = T.mean(correctly_predicted_chars,
+		      dtype=theano.config.floatX)
+    predicted_chars = predicted_chars.reshape(shape=(-1, num_softmaxes))
+    correctly_predicted_chars = correctly_predicted_chars.reshape(shape=(-1, num_softmaxes))
+    num_chars_matched = T.sum(correctly_predicted_chars, axis=1, dtype=theano.config.floatX)
+    seq_test_acc = T.mean(T.eq(num_chars_matched, T.fill(num_chars_matched, num_softmaxes)),
+                          dtype=theano.config.floatX)
+    test_prediction = test_prediction.reshape(shape=(-1, num_softmaxes, len(vocabulary.CHARS)))
+
+    # Compile a function performing a training step on a mini-batch (by giving
+    # the updates dictionary) and returning the corresponding training loss:
+    train_fn = theano.function(
+        [image_input, target_chars_input],
+        loss,
+        updates=updates,
+        allow_input_downcast=True)
+
+    # Compile a second function computing the prediction, validation loss and accuracy:
+    test_fn = theano.function([image_input, target_chars_input],
+			      [test_loss, test_acc, seq_test_acc],
+                              allow_input_downcast=True)
+
+    # Compile a third function computing the prediction.
+    inference_fn = theano.function([image_input],
+			           [predicted_chars, test_prediction],
+                                   allow_input_downcast=True)
+
+    return prediction_layer, train_fn, test_fn, inference_fn
+
+
+  @classmethod
+  def _BuildModelToPredictCharsMultiSoftmax(
+      cls,
+      image_input,
+      num_softmaxes=5,
+      cnn_max_pool_configs=None,
+      cnn_dense_layer_sizes=[256],
+      softmax_dense_layer_size=256):
+    if cnn_max_pool_configs is None:
+      cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
+    network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
+                                        input_var=image_input)
+    cnn_dense_layer_sizes = [x*num_softmaxes for x in cnn_dense_layer_sizes]
+    network = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
+    #network = cls._BuildImageNetCNN(network)
+
+    l_dense_layers = []
+    for _ in range(num_softmaxes):
+      l_dense_layer = lasagne.layers.DenseLayer(
+	      lasagne.layers.dropout(network, p=.5),
+	      num_units=softmax_dense_layer_size,
+	      nonlinearity=lasagne.nonlinearities.rectify)
+      #l_dense_layer = lasagne.layers.DimshuffleLayer(l_dense_layer, (0, 'x', 1))
+      l_dense_layer = lasagne.layers.ReshapeLayer(l_dense_layer, ([0], 1, [1]))
+      l_dense_layers.append(l_dense_layer)
+
+    l_dense = lasagne.layers.ConcatLayer(l_dense_layers, axis=1)
+    l_dense = lasagne.layers.ReshapeLayer(l_dense, (-1, [2]))
+    l_softmax = lasagne.layers.DenseLayer(
+	    lasagne.layers.dropout(l_dense, p=.5),
+	    num_units=len(vocabulary.CHARS),
+	    nonlinearity=lasagne.nonlinearities.softmax)
+    return l_softmax
+
+
+  @classmethod
+  def _InitializeModelThatPredictsAllChars(cls,learning_rate, num_rnn_steps=5, bidirectional_rnn=False):
+    image_input = T.tensor4('image_input')
+
+    prediction_layer, l_cnn, l_lstm = cls._BuildModelToPredictAllChars(
+        image_input, num_rnn_steps=num_rnn_steps,
+        bidirectional_rnn=bidirectional_rnn)
+    target_chars_input = T.imatrix('target_chars')
+    target_chars = target_chars_input[:, :num_rnn_steps]
+    target_chars = target_chars.reshape(shape=(-1,))
+
+    # Create a loss expression for training, Using cross-entropy loss.
+    #prediction = lasagne.layers.get_output(prediction_layer)
+    prediction, l_cnn, l_lstm = tuple(lasagne.layers.get_output([prediction_layer, l_cnn, l_lstm]))
+    l_loss = lasagne.objectives.categorical_crossentropy(prediction, target_chars)
+    #l_loss = l_loss.reshape(shape=(-1, num_rnn_steps)).sum(axis=1)
+    loss = l_loss.mean()
+
+    # Create update expressions for training, i.e., how to modify the
+    # parameters at each training step. Here, we'll use Stochastic Gradient
+    # Descent (SGD) with Nesterov momentum.
+    params = lasagne.layers.get_all_params(prediction_layer, trainable=True)
+    updates = lasagne.updates.nesterov_momentum(
+    	loss, params, learning_rate, momentum=0.9)
+    #updates = lasagne.updates.adagrad(loss, params, learning_rate=0.0001)
+
+    grads = theano.grad(loss, params)
+
+    # Create a loss expression for validation/testing. The crucial difference
+    # here is that we do a deterministic forward pass through the network,
+    # disabling dropout layers.
+    test_prediction = lasagne.layers.get_output(prediction_layer, deterministic=True)
+    test_loss = lasagne.objectives.categorical_crossentropy(test_prediction,
+							    target_chars)
+    test_loss = test_loss.mean()
+
+    predicted_chars = T.argmax(test_prediction, axis=1)
+    correctly_predicted_chars = T.eq(predicted_chars, target_chars)
+    # An expression for the classification accuracy:
+    test_acc = T.mean(correctly_predicted_chars,
+		      dtype=theano.config.floatX)
+    predicted_chars = predicted_chars.reshape(shape=(-1, num_rnn_steps))
+    correctly_predicted_chars = correctly_predicted_chars.reshape(shape=(-1, num_rnn_steps))
+    num_chars_matched = T.sum(correctly_predicted_chars, axis=1, dtype=theano.config.floatX)
+    seq_test_acc = T.mean(T.eq(num_chars_matched, T.fill(num_chars_matched, num_rnn_steps)),
+                          dtype=theano.config.floatX)
+    test_prediction = test_prediction.reshape(shape=(-1, num_rnn_steps, len(vocabulary.CHARS)))
+
+    # Compile a function performing a training step on a mini-batch (by giving
+    # the updates dictionary) and returning the corresponding training loss:
+    train_fn = theano.function(
+        [image_input, target_chars_input],
+        loss,
+        updates=updates,
+        allow_input_downcast=True)
+
+    # Compile a second function computing the prediction, validation loss and accuracy:
+    test_fn = theano.function([image_input, target_chars_input],
+			      [test_loss, test_acc, seq_test_acc],
+                              allow_input_downcast=True)
+
+    # Compile a third function computing the prediction.
+    inference_fn = theano.function([image_input],
+			           [predicted_chars, test_prediction],
+                                   allow_input_downcast=True)
+
+    return prediction_layer, train_fn, test_fn, inference_fn
+
+
+  @classmethod
+  def _BuildModelToPredictAllChars(
+      cls,
+      image_input,
+      num_rnn_steps,
+      mask_input=None,
+      cnn_max_pool_configs=None,
+      cnn_dense_layer_sizes=[256],
+      lstm_layer_units=256,
+      lstm_precompute_input=True,
+      bidirectional_rnn=False,
+      lstm_unroll_scan=False):
+    if cnn_max_pool_configs is None:
+      cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
+    network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
+                                        input_var=image_input)
+    l_cnn = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
+
+    l_cnn = lasagne.layers.ReshapeLayer(l_cnn, ([0], 1, [1]))
+    l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
+
+    #cnn_tensor = lasagne.layers.get_output(l_cnn)
+    #cnn_tensor = l_cnn.dimshuffle(0, 'x', 1).repeat(num_rnn_steps, axis=1)
+    #l_rnn_input = lasagne.layers.InputLayer(shape=(None, num_rnn_steps, cnn_dense_layer_sizes[-1]),
+    #                                        input_var=cnn_tensor)
+
+    #l_cnn = lasagne.layers.DimshuffleLayer(l_cnn, (0, 'x', 1))
+    #l_prev_char_input = lasagne.layers.InputLayer(
+    #    shape=(None, num_rnn_steps-1),
+    #    input_var=target_chars[:, :num_rnn_steps-1])
+    #prev_char_input = lasagne.layers.EmbeddingLayer(l_prev_char_input,
+    #                                                input_size=len(vocabulary.CHARS),
+    #                                                output_size=cnn_dense_layer_sizes[-1])
+
+    #l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
+    #l_rnn_input = lasagne.layers.ConcatLayer([l_cnn, prev_char_input], axis=1)
+
+    l_forward_lstm = lasagne.layers.LSTMLayer(
+        l_rnn_input,
+        num_units=lstm_layer_units,
+        #forgetgate=lasagne.layers.Gate(b=lasagne.init.Constant(5.0)),
+        mask_input=mask_input,
+        precompute_input=lstm_precompute_input,
+        unroll_scan=lstm_unroll_scan
+        )
+    l_lstm = None
+    if bidirectional_rnn:
+      l_backward_lstm = lasagne.layers.LSTMLayer(
+	  l_rnn_input,
+	  num_units=lstm_layer_units,
+	  mask_input=mask_input,
+	  precompute_input=lstm_precompute_input,
+          unroll_scan=lstm_unroll_scan,
+          backwards=True)
+      l_lstm = lasagne.layers.ConcatLayer([l_forward_lstm, l_backward_lstm], axis=2)
+      l_lstm = lasagne.layers.ReshapeLayer(l_lstm, (-1, 2*lstm_layer_units))
+      l_lstm = lasagne.layers.DenseLayer(
+	      lasagne.layers.dropout(l_lstm, p=.5),
+	      num_units=lstm_layer_units)
+    else:
+      l_lstm = l_forward_lstm
+      l_lstm = lasagne.layers.ReshapeLayer(l_lstm, (-1, lstm_layer_units))
+    
+    # And, finally, the softmax layer with 50% dropout on its inputs:
+    l_softmax = lasagne.layers.DenseLayer(
+	lasagne.layers.dropout(l_lstm, p=.5),
+	num_units=len(vocabulary.CHARS),
+	nonlinearity=lasagne.nonlinearities.softmax)
+    #l_softmax = lasagne.layers.ReshapeLayer(l_softmax, (-1, num_rnn_steps, len(vocabulary.CHARS)))
+    
+    return l_softmax, l_cnn, l_lstm
 
 
   @classmethod
@@ -127,6 +398,31 @@ class Model(object):
 	      num_units=dense_layer_size,
 	      nonlinearity=lasagne.nonlinearities.rectify)
     return network
+
+  @classmethod
+  def _BuildImageNetCNN(cls, in_layer):
+    ConvLayer = lasagne.layers.Conv2DLayer
+    DenseLayer = lasagne.layers.DenseLayer
+    DropoutLayer = lasagne.layers.DropoutLayer
+    PoolLayer = lasagne.layers.MaxPool2DLayer
+    NormLayer = lasagne.layers.LocalResponseNormalization2DLayer
+
+    l_layer = in_layer
+    l_layer = ConvLayer(l_layer, num_filters=96, filter_size=7, stride=2)
+    l_layer = NormLayer(l_layer, alpha=0.0001) # caffe has alpha = alpha * pool_size
+    l_layer = PoolLayer(l_layer, pool_size=3, stride=3, ignore_border=False)
+    l_layer = ConvLayer(l_layer, num_filters=256, filter_size=5)
+    l_layer = PoolLayer(l_layer, pool_size=2, stride=2, ignore_border=False)
+    l_layer = ConvLayer(l_layer, num_filters=512, filter_size=3, pad=1)
+    l_layer = ConvLayer(l_layer, num_filters=512, filter_size=3, pad=1)
+    l_layer = ConvLayer(l_layer, num_filters=512, filter_size=3, pad=1)
+    l_layer = PoolLayer(l_layer, pool_size=3, stride=3, ignore_border=False)
+    l_layer = DenseLayer(l_layer, num_units=4096)
+    l_layer = DropoutLayer(l_layer, p=0.5)
+    l_layer = DenseLayer(l_layer, num_units=4096)
+    l_layer = DropoutLayer(l_layer, p=0.5)
+    return l_layer
+
 
   @classmethod
   def _DefaultCNNMaxPoolConfigs(cls):
