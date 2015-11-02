@@ -14,6 +14,8 @@ def parse_arg():
     parser.add_argument("-learningrate", "--learningrate", help="learning rate")
     parser.add_argument("-batchsize", "--batchsize", help="learning rate")
     parser.add_argument("-testsize", "--testsize", help="learning rate")
+    parser.add_argument("-includeCapital", "--includeCapital", help="include capital letters or not",action="store_true" )
+    parser.add_argument("-length", "--length", help="length of the characters")
     args = parser.parse_args()
     print "Params passed are : "
     print args

@@ -11,15 +11,19 @@ class Model(object):
   '''
   class for creating a model.
   '''
-  def __init__(self, learning_rate, no_hidden_layers, saved_params_path=None, multi_chars=True, num_softmaxes=None):
-    if not no_hidden_layers:
-       self.no_hidden_layers = 2
-    else:
-       self.no_hidden_layers = int(no_hidden_layers)
+  def __init__(self, learning_rate=0.01, no_hidden_layers=2, includeCapital=False,
+                      num_rnn_steps=5,  saved_params_path=None, multi_chars=True, num_softmaxes=None):
     if not learning_rate:
-       self.learning_rate = 0.01
+           self.learning_rate = 0.01
     else:
-       self.learning_rate = int(learning_rate)
+           self.learning_rate = int(learning_rate)
+    if not no_hidden_layers:
+           self.no_hidden_layers=2
+    else:
+           self.no_hidden_layers = int(no_hidden_layers)
+    self.num_rnn_steps = num_rnn_steps
+    self.includeCapital = includeCapital
+    self.CHAR_VOCABULARY, self.CHARS = vocabulary.GetCharacterVocabulary(includeCapital)
     if multi_chars:
       if num_softmaxes:
 	self._network, self._train_fn, self._test_fn, self._inference_fn = (
@@ -30,6 +34,7 @@ class Model(object):
     else:
       self._network, self._train_fn, self._test_fn, self._inference_fn = (
 	  self._InitializeModelThatPredictsFirstChar(self.learning_rate))
+    self.prediction = lasagne.layers.get_output(self._network) 
     if saved_params_path:
       ''' 
       If saved params path is specified, then start from that parms value.
@@ -55,6 +60,9 @@ class Model(object):
   def GetTestFn(self):
     return self._test_fn
 
+  def GetPrettyPrint(self, file_path):
+      theano.printing.pydotprint(self._inference_fn, outfile=file_path, var_with_name_simple=True)
+      
   def GetInferenceFn(self):
     return self._inference_fn
 
@@ -115,31 +123,29 @@ class Model(object):
     return prediction_layer, train_fn, test_fn, inference_fn
 
 
-  @classmethod
   def _BuildModelToPredictFirstChar(
-      cls,
+      self,
       image_input,
       cnn_max_pool_configs=None,
       cnn_dense_layer_sizes=[256]):
     if cnn_max_pool_configs is None:
-      cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
+      cnn_max_pool_configs = self._DefaultCNNMaxPoolConfigs()
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
                                         input_var=image_input)
-    network = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
+    network = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
 
     # And, finally, the softmax layer with 50% dropout on its inputs:
     network = lasagne.layers.DenseLayer(
             lasagne.layers.dropout(network, p=.5),
-            num_units=len(vocabulary.CHARS),
+            num_units=len(self.CHARS),
             nonlinearity=lasagne.nonlinearities.softmax)
     return network
 
-  @classmethod
-  def _InitializeModelThatPredictsCharsMultiSoftmax(cls,learning_rate, num_softmaxes=5):
+  def _InitializeModelThatPredictsCharsMultiSoftmax(self,learning_rate, num_softmaxes=5):
     image_input = T.tensor4('image_input')
-
-    #prediction_layer = cls._BuildModelToPredictFirstChar(image_input)
-    prediction_layer = cls._BuildModelToPredictCharsMultiSoftmax(
+    print ("num_of_softmax: " + str(num_softmaxes))
+    #prediction_layer = self._BuildModelToPredictFirstChar(image_input)
+    prediction_layer = self._BuildModelToPredictCharsMultiSoftmax(
         image_input, num_softmaxes=num_softmaxes)
 
     target_chars_input = T.imatrix('target_chars_input')
@@ -176,7 +182,7 @@ class Model(object):
     num_chars_matched = T.sum(correctly_predicted_chars, axis=1, dtype=theano.config.floatX)
     seq_test_acc = T.mean(T.eq(num_chars_matched, T.fill(num_chars_matched, num_softmaxes)),
                           dtype=theano.config.floatX)
-    test_prediction = test_prediction.reshape(shape=(-1, num_softmaxes, len(vocabulary.CHARS)))
+    test_prediction = test_prediction.reshape(shape=(-1, num_softmaxes, len(self.CHARS)))
 
     # Compile a function performing a training step on a mini-batch (by giving
     # the updates dictionary) and returning the corresponding training loss:
@@ -199,21 +205,20 @@ class Model(object):
     return prediction_layer, train_fn, test_fn, inference_fn
 
 
-  @classmethod
   def _BuildModelToPredictCharsMultiSoftmax(
-      cls,
+      self,
       image_input,
       num_softmaxes=5,
       cnn_max_pool_configs=None,
       cnn_dense_layer_sizes=[256],
       softmax_dense_layer_size=256):
     if cnn_max_pool_configs is None:
-      cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
+      cnn_max_pool_configs = self._DefaultCNNMaxPoolConfigs()
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
                                         input_var=image_input)
     cnn_dense_layer_sizes = [x*num_softmaxes for x in cnn_dense_layer_sizes]
-    network = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
-    #network = cls._BuildImageNetCNN(network)
+    network = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
+    #network = self._BuildImageNetCNN(network)
 
     l_dense_layers = []
     for _ in range(num_softmaxes):
@@ -229,16 +234,15 @@ class Model(object):
     l_dense = lasagne.layers.ReshapeLayer(l_dense, (-1, [2]))
     l_softmax = lasagne.layers.DenseLayer(
 	    lasagne.layers.dropout(l_dense, p=.5),
-	    num_units=len(vocabulary.CHARS),
+	    num_units=len(self.CHARS),
 	    nonlinearity=lasagne.nonlinearities.softmax)
     return l_softmax
 
 
-  @classmethod
-  def _InitializeModelThatPredictsAllChars(cls,learning_rate, num_rnn_steps=5, bidirectional_rnn=False):
+  def _InitializeModelThatPredictsAllChars(self,learning_rate, bidirectional_rnn=False):
     image_input = T.tensor4('image_input')
-
-    prediction_layer, l_cnn, l_lstm = cls._BuildModelToPredictAllChars(
+    num_rnn_steps = self.num_rnn_steps
+    prediction_layer, l_cnn, l_lstm = self._BuildModelToPredictAllChars(
         image_input, num_rnn_steps=num_rnn_steps,
         bidirectional_rnn=bidirectional_rnn)
     target_chars_input = T.imatrix('target_chars')
@@ -280,7 +284,7 @@ class Model(object):
     num_chars_matched = T.sum(correctly_predicted_chars, axis=1, dtype=theano.config.floatX)
     seq_test_acc = T.mean(T.eq(num_chars_matched, T.fill(num_chars_matched, num_rnn_steps)),
                           dtype=theano.config.floatX)
-    test_prediction = test_prediction.reshape(shape=(-1, num_rnn_steps, len(vocabulary.CHARS)))
+    test_prediction = test_prediction.reshape(shape=(-1, num_rnn_steps, len(self.CHARS)))
 
     # Compile a function performing a training step on a mini-batch (by giving
     # the updates dictionary) and returning the corresponding training loss:
@@ -303,9 +307,8 @@ class Model(object):
     return prediction_layer, train_fn, test_fn, inference_fn
 
 
-  @classmethod
   def _BuildModelToPredictAllChars(
-      cls,
+      self,
       image_input,
       num_rnn_steps,
       mask_input=None,
@@ -316,10 +319,10 @@ class Model(object):
       bidirectional_rnn=False,
       lstm_unroll_scan=False):
     if cnn_max_pool_configs is None:
-      cnn_max_pool_configs = cls._DefaultCNNMaxPoolConfigs()
+      cnn_max_pool_configs = self._DefaultCNNMaxPoolConfigs()
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
                                         input_var=image_input)
-    l_cnn = cls._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
+    l_cnn = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
 
     l_cnn = lasagne.layers.ReshapeLayer(l_cnn, ([0], 1, [1]))
     l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
@@ -334,7 +337,7 @@ class Model(object):
     #    shape=(None, num_rnn_steps-1),
     #    input_var=target_chars[:, :num_rnn_steps-1])
     #prev_char_input = lasagne.layers.EmbeddingLayer(l_prev_char_input,
-    #                                                input_size=len(vocabulary.CHARS),
+    #                                                input_size=len(self.CHARS),
     #                                                output_size=cnn_dense_layer_sizes[-1])
 
     #l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
@@ -369,9 +372,9 @@ class Model(object):
     # And, finally, the softmax layer with 50% dropout on its inputs:
     l_softmax = lasagne.layers.DenseLayer(
 	lasagne.layers.dropout(l_lstm, p=.5),
-	num_units=len(vocabulary.CHARS),
+	num_units=len(self.CHARS),
 	nonlinearity=lasagne.nonlinearities.softmax)
-    #l_softmax = lasagne.layers.ReshapeLayer(l_softmax, (-1, num_rnn_steps, len(vocabulary.CHARS)))
+    #l_softmax = lasagne.layers.ReshapeLayer(l_softmax, (-1, num_rnn_steps, len(self.CHARS)))
     
     return l_softmax, l_cnn, l_lstm
 

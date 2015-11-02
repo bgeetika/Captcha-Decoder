@@ -29,19 +29,6 @@ def IterateMinibatches(inputs, targets, batch_size, shuffle=False):
 BATCH_SIZE = 500
 TEST_BATCH_SIZE = 500
 
-def Analyze(model_params_file_prefix, training_data_dir, multi_chars=True, batch_size=100):
-  captcha_model = Model(
-      saved_params_path=GetLatestModelFile(model_params_file_prefix),
-      multi_chars=multi_chars)
-  training_file = list(utils.GetFilePathsUnderDir(training_data_dir, shuffle=False))[0]
-  image_input, target_chars = TrainingData.Load(training_file)
-  image_input_batch, target_chars_batch = image_input[:batch_size], target_chars[:batch_size]
-  vals = captcha_model.GetTrainFn()(image_input_batch, target_chars_batch)
-  l_err, l_cnn, l_lstm, prediction = tuple(vals[:4])
-  grads = vals[4:]
-
-  return (l_err, l_cnn, l_lstm, prediction, grads)
-
 
 def Train(train_fn, image_input, target_chars, count_imagestrained_sofar, eval_matrix,  batch_size=BATCH_SIZE):
   train_err = 0
@@ -134,14 +121,15 @@ class EvalMatrix:
          self.training_loss = []
 
 def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
-  
-
   training_data_dir = args.TrainingDirc
   val_data_file = args.ValidateDirc
   test_data_file = args.TestDirc
   model_params_file_prefix = args.ModelParamsFile
   global BATCH_SIZE
   global TEST_BATCH_SIZE
+  includeCapital = args.includeCapital
+  length = 5 if not args.length else int(args.length)
+           
   if args.maxsoft:
        num_softmaxes = int(args.maxsoft)
   if args.batchsize:
@@ -152,7 +140,7 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
   no_hidden_layers = args.hiddenlayers
 
   print('Compiling model')
-  captcha_model = Model( learning_rate, no_hidden_layers,
+  captcha_model = Model(learning_rate, no_hidden_layers,includeCapital,length, 
       saved_params_path=GetLatestModelFile(model_params_file_prefix),
       multi_chars=multi_chars, num_softmaxes=num_softmaxes)
   print('Loading validation data')
@@ -168,13 +156,13 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
         utils.GetFilePathsUnderDir(training_data_dir, shuffle=False)):
       image_input, target_chars = TrainingData.Load(training_file)
       Train(captcha_model.GetTrainFn(), image_input, target_chars,
-            total_images_trained, eval_matrix)
+            total_images_trained, eval_matrix, BATCH_SIZE)
       total_images_trained += image_input.shape[0]
       _SaveModelAndRemoveOldOnes(captcha_model, model_params_file_prefix)
       Test(captcha_model.GetTestFn(), image_input[:TEST_BATCH_SIZE],
-           target_chars[:TEST_BATCH_SIZE], multi_chars=multi_chars)
+           target_chars[:TEST_BATCH_SIZE],batch_size=BATCH_SIZE, multi_chars=multi_chars)
       Test(captcha_model.GetTestFn(), val_image_input,
-           val_target_chars, multi_chars=multi_chars)
+           val_target_chars, batch_size=BATCH_SIZE, multi_chars=multi_chars)
       if i != 0 and i % 10 == 0:
         print('Processed epoch:{0} {1} training files.'.format(epoch_num + 1 , i))
   
@@ -187,10 +175,11 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
   training_loss_vector = np.narray(eval_matrix.training_loss)  
  
 class CaptchaCracker(object):
-  def __init__(self, model_params_file_prefix, multi_chars=True, num_softmaxes=None):
+  def __init__(self, model_params_file_prefix, graph_file_path= "/home/geetika/model_graph.png",  multi_chars=True, num_softmaxes=None):
     latest_model_params_file = GetLatestModelFile(model_params_file_prefix)
-    captcha_model = Model(saved_params_path=latest_model_params_file, multi_chars=multi_chars, num_softmaxes=num_softmaxes)
-    self._inference_fn = captcha_model.GetInferenceFn()
+    self.captcha_model = Model(saved_params_path=latest_model_params_file, includeCapital=True, multi_chars=multi_chars, num_softmaxes=num_softmaxes)
+    self.captcha_model.GetPrettyPrint(graph_file_path)
+    self._inference_fn = self.captcha_model.GetInferenceFn()
 
   def InferFromImagePath(self, image_path):
     image_input = ImagePreprocessor.ProcessImage(ImagePreprocessor.GetImageData(image_path))
@@ -200,7 +189,7 @@ class CaptchaCracker(object):
     image_numpy_arr = ImagePreprocessor.NormalizeImageInput(image_numpy_arr)
     predicted_char_id, predicted_probs = self._inference_fn(
         numpy.expand_dims(image_numpy_arr, axis=0))
-    chars = vocabulary.CHARS
+    chars = self.captcha_model.CHARS
     if predicted_char_id.ndim == 1:
       predicted_chars = chars[predicted_char_id[0]]
       probs_by_chars = {}
