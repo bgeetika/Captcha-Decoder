@@ -13,9 +13,7 @@ class Model(object):
   '''
   def __init__(self, learning_rate=0.01, no_hidden_layers=2, includeCapital=False,
                num_rnn_steps=5,  saved_params_path=None, multi_chars=True,
-               num_softmaxes=None, use_mask_input=False, lstm_layer_units=256, 
-               cnn_dense_layer_sizes = [256]):
-    
+               num_softmaxes=None, use_mask_input=False, lstm_layer_units=512):
     if not learning_rate:
            self.learning_rate = 0.01
     else:
@@ -35,7 +33,7 @@ class Model(object):
 	self._network, self._train_fn, self._test_fn, self._inference_fn = (
 	    self._InitializeModelThatPredictsAllChars(
                 self.learning_rate, use_mask_input=use_mask_input,
-                lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes =cnn_dense_layer_sizes))
+                lstm_layer_units=lstm_layer_units))
     else:
       self._network, self._train_fn, self._test_fn, self._inference_fn = (
 	  self._InitializeModelThatPredictsFirstChar(self.learning_rate))
@@ -246,7 +244,7 @@ class Model(object):
 
   def _InitializeModelThatPredictsAllChars(
       self, learning_rate, bidirectional_rnn=False, use_mask_input=False,
-      lstm_layer_units=256, cnn_dense_layer_sizes = 256):
+      lstm_layer_units=256):
     image_input = T.tensor4('image_input')
     num_rnn_steps = self.num_rnn_steps
     target_chars_input = T.imatrix('target_chars')
@@ -261,8 +259,7 @@ class Model(object):
       #mask_input = mask_input.reshape(shape=(-1,))
     prediction_layer, l_cnn, l_lstm = self._BuildModelToPredictAllChars(
         image_input, num_rnn_steps=num_rnn_steps, mask_input=mask_input,
-        bidirectional_rnn=bidirectional_rnn, lstm_layer_units=lstm_layer_units, 
-        cnn_dense_layer_sizes= cnn_dense_layer_sizes)
+        bidirectional_rnn=bidirectional_rnn, lstm_layer_units=lstm_layer_units)
 
     # Create a loss expression for training, Using cross-entropy loss.
     #prediction = lasagne.layers.get_output(prediction_layer)
@@ -346,7 +343,7 @@ class Model(object):
     if mask_input:
       mask_input = lasagne.layers.InputLayer(shape=(None, num_rnn_steps),
 					     input_var=mask_input)
-    l_cnn = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes = cnn_dense_layer_sizes)
+    l_cnn = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes)
     #l_cnn = self._BuildImageNetCNN(network)
 
     l_cnn = lasagne.layers.ReshapeLayer(l_cnn, ([0], 1, [1]))

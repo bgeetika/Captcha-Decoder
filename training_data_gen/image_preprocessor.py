@@ -18,8 +18,14 @@ class ImagePreprocessor(object):
 
   @classmethod
   def GetImageData(cls, image_file_path):
-    return numpy.asarray(Image.open(image_file_path).convert('L')) 
+    return numpy.asarray(Image.open(image_file_path).convert('L'))
 
   @classmethod
   def NormalizeImageInput(cls, image_input):
     return image_input / 100.0
+
+  @classmethod
+  def RescaleImageInput(cls, image_input):
+    image_input[image_input > numpy.percentile(image_input, 88)] = numpy.max(image_input)
+    image_input = image_input / numpy.max(image_input)
+    return image_input

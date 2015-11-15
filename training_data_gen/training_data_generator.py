@@ -18,7 +18,8 @@ def _GetCaptchaIdsFromImageFilename(image_filepath):
   captcha_str = _ParseCaptchaFromImageFilename(image_filepath)
   captcha_ids = numpy.zeros(len(captcha_str), dtype=numpy.int32)
   for i, captcha_char in enumerate(captcha_str):
-    captcha_ids[i] = vocabulary.CHAR_VOCABULARY[captcha_char]
+    CHAR_VOCABULARY, CHARS = vocabulary.GetCharacterVocabulary(sys.argv[2])    
+    captcha_ids[i] = CHAR_VOCABULARY[captcha_char]
   return captcha_ids
 
 def _GetShapeOfImagesUnderDir(captchas_dir):
@@ -33,10 +34,16 @@ class TrainingData(object):
     numpy.savez(file_path, image_data=image_data, chars=chars)
 
   @classmethod
-  def Load(cls, file_path):
+  def Load(cls, file_path, rescale_in_preprocessing=False):
     training_data = numpy.load(file_path)
-    ret = (ImagePreprocessor.NormalizeImageInput(training_data['image_data']),  
-           training_data['chars'])
+    image_input = training_data['image_data']
+    if rescale_in_preprocessing:
+      for row in range(image_input.shape[0]):
+        image_input[row, 0, :, :] = ImagePreprocessor.RescaleImageInput(
+            image_input[row, 0, :, :])
+    else:
+      image_input = ImagePreprocessor.NormalizeImageInput(image_input)
+    ret = (image_input, training_data['chars'])
     del training_data.f
     training_data.close()
     return ret

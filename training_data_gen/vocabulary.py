@@ -5,4 +5,5 @@ def GetCharacterVocabulary(capital_included):
      all_chars = ['unk'] + GetChars('0', '9') + GetChars('a', 'z')   + GetChars('A', 'Z')
   else:
      all_chars = ['unk'] + GetChars('0', '9') + GetChars('a', 'z')
+  #RETURNS VOCABULARY, CHARS
   return {char: i for i, char in enumerate(all_chars)}, all_chars

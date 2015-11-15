@@ -65,8 +65,8 @@ public  class CaptchaGenerator extends java.lang.Object implements java.io.Seria
 					throws IOException, InstantiationException, IllegalAccessException, ClassNotFoundException{
 		//System.out.println("Starting ");
 		char[] temp = generateText(input);
-		int random_noise = new  Random().nextInt(3) ;
-		int random_background = new  Random().nextInt(3) ;
+		int random_noise = new  Random().nextInt(2);
+		int random_background = new  Random().nextInt(2);
 		int random_gimpy = 1;
 		
 		
@@ -95,7 +95,7 @@ public  class CaptchaGenerator extends java.lang.Object implements java.io.Seria
 	 
 		
 		BufferedImage bufferedImage = captcha.getImage();
-		File outputfile = new File("/home/geetika/captcha/dataset_ssd_1T/complex_mix_dataset/" + image_number + "_" +  captcha.getAnswer() + ".jpg");
+		File outputfile = new File("/home/geetika/captcha/dataset_ssd_1T/variable_dataset/" + image_number + "_" +  captcha.getAnswer() + ".jpg");
 		//File outputfile = new File("/Users/geetika/Desktop/" + image_number + "_" +  captcha.getAnswer() + ".jpg");
 		ImageIO.write(bufferedImage, "jpg", outputfile);
 		
