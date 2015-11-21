@@ -184,9 +184,9 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
   global TEST_BATCH_SIZE
   includeCapital = args.includeCapital
   length = 5 if not args.length else int(args.length)
-
+  bidirec = args.bidirec 
   cnn_dense_layer_sizes = [int(args.cnn_dense_layer_sizes)]
-  print (cnn_dense_layer_sizes)
+  print (cnn_dense_layer_sizes, bidirec)
   if args.maxsoft:
        num_softmaxes = int(args.maxsoft)
   if args.batchsize:
@@ -194,6 +194,15 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
   if args.testsize:
        TEST_BATCH_SIZE = int(args.testsize)
   learning_rate = args.learningrate
+  lstm_grad_clipping = args.lstm_grad_clipping
+  if lstm_grad_clipping == None:
+        lstm_grad_clipping = False
+  elif lstm_grad_clipping.upper() == "True".upper():
+        lstm_grad_clipping = True
+  elif lstm_grad_clipping.upper() == "False".upper():
+        lstm_grad_clipping = False
+  else:
+      lstm_grad_clipping = float(lstm_grad_clipping)
   no_hidden_layers = args.hiddenlayers
   lstm_layer_units=args.lstm_layer_units
   print('Compiling model')
@@ -206,7 +215,9 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
       multi_chars=multi_chars, num_softmaxes=num_softmaxes,
       use_mask_input=args.use_mask_input,
       lstm_layer_units=lstm_layer_units,
-      cnn_dense_layer_sizes = cnn_dense_layer_sizes)
+      cnn_dense_layer_sizes = cnn_dense_layer_sizes,
+      bidirec = bidirec,
+      lstm_grad_clipping=lstm_grad_clipping)
   print('Loading validation data')
   val_image_input, val_target_chars = TrainingData.Load(val_data_file, rescale_in_preprocessing=args.rescale)
   val_image_input = val_image_input[:TEST_BATCH_SIZE]
@@ -214,7 +225,7 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
   eval_matrix = EvalMatrix(model_params_file_prefix)
   print('Starting training')
   total_images_trained = 0
-  #_SaveModelAndRemoveOldOnes(captcha_model, model_params_file_prefix)
+  _SaveModelAndRemoveOldOnes(captcha_model, model_params_file_prefix)
   for epoch_num in range(num_epochs):
     for i, training_file in enumerate(
         utils.GetFilePathsUnderDir(training_data_dir, shuffle=True)):
@@ -250,12 +261,16 @@ class CaptchaCracker(object):
   def __init__(self, model_params_file_prefix, includeCapital,
                graph_file_path= "/home/geetika/model_graph.png",
                multi_chars=True, num_softmaxes=None, rescale_in_preprocessing=False,
-               num_rnn_steps=5, use_mask_input=False, lstm_layer_units = 256, cnn_dense_layer_sizes = [256]):
+               num_rnn_steps=5, use_mask_input=False, lstm_layer_units = 256, cnn_dense_layer_sizes = [256],
+               lstm_grad_clipping = False):
     latest_model_params_file = GetLatestModelFile(model_params_file_prefix)
+    if type(cnn_dense_layer_sizes) == type(1):
+           cnn_dense_layer_sizes = [cnn_dense_layer_sizes]
     self.captcha_model = Model(
         saved_params_path=latest_model_params_file, includeCapital=includeCapital,
         multi_chars=multi_chars, num_softmaxes=num_softmaxes, num_rnn_steps=num_rnn_steps,
-        use_mask_input=use_mask_input, lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes = cnn_dense_layer_sizes)
+        use_mask_input=use_mask_input, lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes = cnn_dense_layer_sizes,
+        lstm_grad_clipping = lstm_grad_clipping)
     self.captcha_model.GetPrettyPrint(graph_file_path)
     self._inference_fn = self.captcha_model.GetInferenceFn()
     self._rescale_in_preprocessing = rescale_in_preprocessing

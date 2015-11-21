@@ -14,7 +14,7 @@ class Model(object):
   def __init__(self, learning_rate=0.01, no_hidden_layers=2, includeCapital=False,
                num_rnn_steps=5,  saved_params_path=None, multi_chars=True,
                num_softmaxes=None, use_mask_input=False, lstm_layer_units=256, 
-               cnn_dense_layer_sizes = [256]):
+               cnn_dense_layer_sizes = [256], bidirec=False,lstm_grad_clipping=False):
     
     if not learning_rate:
            self.learning_rate = 0.01
@@ -35,7 +35,8 @@ class Model(object):
 	self._network, self._train_fn, self._test_fn, self._inference_fn = (
 	    self._InitializeModelThatPredictsAllChars(
                 self.learning_rate, use_mask_input=use_mask_input,
-                lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes =cnn_dense_layer_sizes))
+                lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes=cnn_dense_layer_sizes,bidirectional_rnn=bidirec,
+                lstm_grad_clipping=lstm_grad_clipping))
     else:
       self._network, self._train_fn, self._test_fn, self._inference_fn = (
 	  self._InitializeModelThatPredictsFirstChar(self.learning_rate))
@@ -246,7 +247,7 @@ class Model(object):
 
   def _InitializeModelThatPredictsAllChars(
       self, learning_rate, bidirectional_rnn=False, use_mask_input=False,
-      lstm_layer_units=256, cnn_dense_layer_sizes = 256):
+      lstm_layer_units=256, cnn_dense_layer_sizes = 256, lstm_grad_clipping=False):
     image_input = T.tensor4('image_input')
     num_rnn_steps = self.num_rnn_steps
     target_chars_input = T.imatrix('target_chars')
@@ -262,7 +263,9 @@ class Model(object):
     prediction_layer, l_cnn, l_lstm = self._BuildModelToPredictAllChars(
         image_input, num_rnn_steps=num_rnn_steps, mask_input=mask_input,
         bidirectional_rnn=bidirectional_rnn, lstm_layer_units=lstm_layer_units, 
-        cnn_dense_layer_sizes= cnn_dense_layer_sizes)
+        cnn_dense_layer_sizes= cnn_dense_layer_sizes,
+        lstm_grad_clipping=lstm_grad_clipping)
+        #lstm_grad_clipping=False)
 
     # Create a loss expression for training, Using cross-entropy loss.
     #prediction = lasagne.layers.get_output(prediction_layer)
@@ -280,11 +283,31 @@ class Model(object):
     # parameters at each training step. Here, we'll use Stochastic Gradient
     # Descent (SGD) with Nesterov momentum.
     params = lasagne.layers.get_all_params(prediction_layer, trainable=True)
-    updates = lasagne.updates.nesterov_momentum(
-     	loss, params, learning_rate, momentum=0.9)
-    #updates = lasagne.updates.adagrad(loss, params, learning_rate=0.001)
 
-    grads = theano.grad(loss, params)
+    #grads = theano.grad(loss, params)
+    if lstm_grad_clipping:
+      print('doing grad clipping')
+      max_grad_norm = 15.0
+      grads = theano.grad(loss, params)
+      grads = [grad.clip(-5., 5.) for grad in grads]
+      #grads, norm = lasagne.updates.total_norm_constraint(
+      #	 grads, max_grad_norm, return_norm=True)
+      grads = [lasagne.updates.norm_constraint(
+                   grad, max_grad_norm, range(grad.ndim))
+      	       for grad in grads]
+      updates = lasagne.updates.adam(grads, params, learning_rate=learning_rate)
+
+      #max_norm = 0.2
+      #grads = theano.grad(loss, params)
+      #grads = [lasagne.updates.norm_constraint(grad, max_norm, range(grad.ndim))
+      #	       for grad in grads]
+      #grads = [grad.clip(-.5, 0.5) for grad in grads]
+      #updates = lasagne.updates.sgd(
+      #    grads, params, learning_rate=learning_rate)
+    else:
+      updates = lasagne.updates.nesterov_momentum(
+	  loss, params, learning_rate, momentum=0.9)
+      #updates = lasagne.updates.adagrad(loss, params, learning_rate=0.001)
 
     # Create a loss expression for validation/testing. The crucial difference
     # here is that we do a deterministic forward pass through the network,
@@ -338,7 +361,8 @@ class Model(object):
       lstm_layer_units=256,
       lstm_precompute_input=True,
       bidirectional_rnn=False,
-      lstm_unroll_scan=False):
+      lstm_unroll_scan=False,
+      lstm_grad_clipping=False):
     if cnn_max_pool_configs is None:
       cnn_max_pool_configs = self._DefaultCNNMaxPoolConfigs()
     network = lasagne.layers.InputLayer(shape=(None, 1, 50, 200),
@@ -374,7 +398,18 @@ class Model(object):
         #forgetgate=lasagne.layers.Gate(b=lasagne.init.Constant(5.0)),
         mask_input=mask_input,
         precompute_input=lstm_precompute_input,
-        unroll_scan=lstm_unroll_scan)
+        unroll_scan=lstm_unroll_scan,
+        grad_clipping=lstm_grad_clipping)
+    '''
+    l_forward_lstm = lasagne.layers.LSTMLayer(
+        l_forward_lstm,
+        num_units=lstm_layer_units,
+        #forgetgate=lasagne.layers.Gate(b=lasagne.init.Constant(5.0)),
+        mask_input=mask_input,
+        precompute_input=lstm_precompute_input,
+        unroll_scan=lstm_unroll_scan,
+        grad_clipping=lstm_grad_clipping)
+    '''
     l_lstm = None
     if bidirectional_rnn:
       l_backward_lstm = lasagne.layers.LSTMLayer(
@@ -383,7 +418,8 @@ class Model(object):
 	  mask_input=mask_input,
 	  precompute_input=lstm_precompute_input,
           unroll_scan=lstm_unroll_scan,
-          backwards=True)
+          backwards=True,
+          grad_clipping=lstm_grad_clipping)
       l_lstm = lasagne.layers.ConcatLayer([l_forward_lstm, l_backward_lstm], axis=2)
       l_lstm = lasagne.layers.ReshapeLayer(l_lstm, (-1, 2*lstm_layer_units))
       l_lstm = lasagne.layers.DenseLayer(

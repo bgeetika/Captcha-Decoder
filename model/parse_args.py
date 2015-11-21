@@ -21,6 +21,7 @@ def parse_arg():
     parser.add_argument("-lstm_layer_units", "--lstm_layer_units", metavar='\b', help="No of units in lstm layer", type=int, default=256)
     parser.add_argument("-cnn_dense_layer_sizes", "--cnn_dense_layer_sizes", metavar='\b', help="No of units in dense layer", type=int, default=256)
     parser.add_argument("-multichar", "--multichar", help="multichar disabled",action="store_false")
+    parser.add_argument("-lstm_grad_clipping", "--lstm_grad_clipping", help="lstm_grad_clipping")
     args = parser.parse_args()
     print "Params passed are : "
     print args
