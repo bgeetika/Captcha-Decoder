@@ -412,6 +412,7 @@ class Model(object):
     '''
     l_lstm = None
     if bidirectional_rnn:
+      print ("running bidirec")
       l_backward_lstm = lasagne.layers.LSTMLayer(
 	  l_rnn_input,
 	  num_units=lstm_layer_units,

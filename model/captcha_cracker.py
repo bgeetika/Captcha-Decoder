@@ -239,11 +239,11 @@ def Run(args, num_epochs=20, multi_chars=True, num_softmaxes=None):
       test_flag = False
       Test(captcha_model.GetTestFn(), image_input[:TEST_BATCH_SIZE],
            target_chars[:TEST_BATCH_SIZE],total_images_trained, train_flag, eval_matrix,
-           batch_size=BATCH_SIZE, multi_chars=multi_chars,
+           batch_size=TEST_BATCH_SIZE, multi_chars=multi_chars,
            use_mask_input=args.use_mask_input)
       Test(captcha_model.GetTestFn(), val_image_input,
            val_target_chars, total_images_trained, test_flag, eval_matrix,
-           batch_size=BATCH_SIZE, multi_chars=multi_chars,
+           batch_size=TEST_BATCH_SIZE, multi_chars=multi_chars,
            use_mask_input=args.use_mask_input)
       eval_matrix.update_files()
       eval_matrix = EvalMatrix(model_params_file_prefix)
@@ -262,7 +262,7 @@ class CaptchaCracker(object):
                graph_file_path= "/home/geetika/model_graph.png",
                multi_chars=True, num_softmaxes=None, rescale_in_preprocessing=False,
                num_rnn_steps=5, use_mask_input=False, lstm_layer_units = 256, cnn_dense_layer_sizes = [256],
-               lstm_grad_clipping = False):
+               lstm_grad_clipping = False, bidirec = False):
     latest_model_params_file = GetLatestModelFile(model_params_file_prefix)
     if type(cnn_dense_layer_sizes) == type(1):
            cnn_dense_layer_sizes = [cnn_dense_layer_sizes]
@@ -270,8 +270,8 @@ class CaptchaCracker(object):
         saved_params_path=latest_model_params_file, includeCapital=includeCapital,
         multi_chars=multi_chars, num_softmaxes=num_softmaxes, num_rnn_steps=num_rnn_steps,
         use_mask_input=use_mask_input, lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes = cnn_dense_layer_sizes,
-        lstm_grad_clipping = lstm_grad_clipping)
-    self.captcha_model.GetPrettyPrint(graph_file_path)
+        lstm_grad_clipping = lstm_grad_clipping, bidirec=bidirec )
+    #self.captcha_model.GetPrettyPrint(graph_file_path)
     self._inference_fn = self.captcha_model.GetInferenceFn()
     self._rescale_in_preprocessing = rescale_in_preprocessing
     self._num_rnn_steps = num_rnn_steps
