@@ -297,13 +297,6 @@ class Model(object):
       	       for grad in grads]
       updates = lasagne.updates.adam(grads, params, learning_rate=learning_rate)
 
-      #max_norm = 0.2
-      #grads = theano.grad(loss, params)
-      #grads = [lasagne.updates.norm_constraint(grad, max_norm, range(grad.ndim))
-      #	       for grad in grads]
-      #grads = [grad.clip(-.5, 0.5) for grad in grads]
-      #updates = lasagne.updates.sgd(
-      #    grads, params, learning_rate=learning_rate)
     else:
       updates = lasagne.updates.nesterov_momentum(
 	  loss, params, learning_rate, momentum=0.9)
@@ -371,26 +364,10 @@ class Model(object):
       mask_input = lasagne.layers.InputLayer(shape=(None, num_rnn_steps),
 					     input_var=mask_input)
     l_cnn = self._BuildCNN(network, cnn_max_pool_configs, cnn_dense_layer_sizes = cnn_dense_layer_sizes)
-    #l_cnn = self._BuildImageNetCNN(network)
 
     l_cnn = lasagne.layers.ReshapeLayer(l_cnn, ([0], 1, [1]))
     l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
 
-    #cnn_tensor = lasagne.layers.get_output(l_cnn)
-    #cnn_tensor = l_cnn.dimshuffle(0, 'x', 1).repeat(num_rnn_steps, axis=1)
-    #l_rnn_input = lasagne.layers.InputLayer(shape=(None, num_rnn_steps, cnn_dense_layer_sizes[-1]),
-    #                                        input_var=cnn_tensor)
-
-    #l_cnn = lasagne.layers.DimshuffleLayer(l_cnn, (0, 'x', 1))
-    #l_prev_char_input = lasagne.layers.InputLayer(
-    #    shape=(None, num_rnn_steps-1),
-    #    input_var=target_chars[:, :num_rnn_steps-1])
-    #prev_char_input = lasagne.layers.EmbeddingLayer(l_prev_char_input,
-    #                                                input_size=len(self.CHARS),
-    #                                                output_size=cnn_dense_layer_sizes[-1])
-
-    #l_rnn_input = lasagne.layers.ConcatLayer([l_cnn for _ in range(num_rnn_steps)], axis=1)
-    #l_rnn_input = lasagne.layers.ConcatLayer([l_cnn, prev_char_input], axis=1)
 
     l_forward_lstm = lasagne.layers.LSTMLayer(
         l_rnn_input,
@@ -400,16 +377,6 @@ class Model(object):
         precompute_input=lstm_precompute_input,
         unroll_scan=lstm_unroll_scan,
         grad_clipping=lstm_grad_clipping)
-    '''
-    l_forward_lstm = lasagne.layers.LSTMLayer(
-        l_forward_lstm,
-        num_units=lstm_layer_units,
-        #forgetgate=lasagne.layers.Gate(b=lasagne.init.Constant(5.0)),
-        mask_input=mask_input,
-        precompute_input=lstm_precompute_input,
-        unroll_scan=lstm_unroll_scan,
-        grad_clipping=lstm_grad_clipping)
-    '''
     l_lstm = None
     if bidirectional_rnn:
       print ("running bidirec")
@@ -435,7 +402,6 @@ class Model(object):
 	lasagne.layers.dropout(l_lstm, p=.5),
 	num_units=len(self.CHARS),
 	nonlinearity=lasagne.nonlinearities.softmax)
-    #l_softmax = lasagne.layers.ReshapeLayer(l_softmax, (-1, num_rnn_steps, len(self.CHARS)))
     return l_softmax, l_cnn, l_lstm
 
 

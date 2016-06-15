@@ -271,7 +271,6 @@ class CaptchaCracker(object):
         multi_chars=multi_chars, num_softmaxes=num_softmaxes, num_rnn_steps=num_rnn_steps,
         use_mask_input=use_mask_input, lstm_layer_units=lstm_layer_units, cnn_dense_layer_sizes = cnn_dense_layer_sizes,
         lstm_grad_clipping = lstm_grad_clipping, bidirec=bidirec )
-    #self.captcha_model.GetPrettyPrint(graph_file_path)
     self._inference_fn = self.captcha_model.GetInferenceFn()
     self._rescale_in_preprocessing = rescale_in_preprocessing
     self._num_rnn_steps = num_rnn_steps

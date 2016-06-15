@@ -15,23 +15,6 @@ def load_file():
     del f.f
   x = 0
   while(x < len(param_values_new)):
-    '''
-    if param_values_new[x].shape != param_values[x].shape:
-      if len(param_values_new[x].shape) == 2:
-         print param_values_new[x].shape, param_values[x].shape
-         rows, cols = param_values[x].shape
-         rows_new, cols_new = param_values_new[x].shape
-         rows_updates = min(rows,rows_new)
-         cols_updates = min(
-         #assert(param_values_new[x].shape[1] > param_values[x].shape[1])     
-         #assert(param_values_new[x].shape[0] >= param_values[x].shape[0])     
-         param_values_new[x][0:256,0:cols] = param_values[x][0:256,0:cols]
-      else:
-        print "here"
-        rows = param_values[x].shape[0]
-        assert(param_values_new[x].shape[0] >= param_values[x].shape[0])
-        param_values_new[x][0:rows] = param_values[x]
-     '''
        param_values_new[x] = param_values[x]
     x += 1
   
